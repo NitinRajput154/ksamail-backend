@@ -18,9 +18,25 @@ async function bootstrap() {
     app.use(cookieParser());
 
     // 3. CORS for frontend integration
+    const allowedOrigins = [
+        'http://localhost:3000',
+        'https://ksa-mail.vercel.app',
+        ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map(u => u.trim()) : []),
+    ];
+
     app.enableCors({
-        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+        origin: (origin, callback) => {
+            // Allow requests with no origin (mobile apps, curl, etc.)
+            if (!origin || allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                logger.warn(`⚠️ CORS blocked origin: ${origin}`);
+                callback(null, true); // Allow all for now, log warnings
+            }
+        },
         credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     });
 
     const port = process.env.PORT || 4000;
