@@ -312,27 +312,27 @@ export class AuthService {
             this.logger.log(`✅ User created in DB: id=${user.id}, email=${user.email}`);
 
             // 6. Create Mailbox in Mailcow
-            // try {
-            //     this.logger.log(`📬 Creating mailbox in Mailcow: ${username}@${MAIL_DOMAIN}`);
-            //     await this.mailcow.createMailbox(username, MAIL_DOMAIN, name, password);
-            //     this.logger.log(`✅ Mailcow mailbox created successfully`);
+            try {
+                this.logger.log(`📬 Creating mailbox in Mailcow: ${username}@${MAIL_DOMAIN}`);
+                await this.mailcow.createMailbox(username, MAIL_DOMAIN, name, password);
+                this.logger.log(`✅ Mailcow mailbox created successfully`);
 
-            //     // 7. Create Mailbox record in local DB
-            //     const mailbox = await this.prisma.mailbox.create({
-            //         data: {
-            //             email,
-            //             userId: user.id,
-            //             quota: 2048,
-            //             status: 'active',
-            //         },
-            //     });
-            //     this.logger.log(`✅ Mailbox record created in DB: id=${mailbox.id}`);
-            // } catch (mailError: any) {
-            //     this.logger.error(`❌ Mailcow creation failed: ${mailError.message}`);
-            //     this.logger.warn(`🔄 Rolling back user creation: ${user.id}`);
-            //     await this.prisma.user.delete({ where: { id: user.id } });
-            //     throw new InternalServerErrorException(`Mailcow account creation failed: ${mailError.message}`);
-            // }
+                // 7. Create Mailbox record in local DB
+                const mailbox = await this.prisma.mailbox.create({
+                    data: {
+                        email,
+                        userId: user.id,
+                        quota: 2048,
+                        status: 'active',
+                    },
+                });
+                this.logger.log(`✅ Mailbox record created in DB: id=${mailbox.id}`);
+            } catch (mailError: any) {
+                this.logger.error(`❌ Mailcow creation failed: ${mailError.message}`);
+                this.logger.warn(`🔄 Rolling back user creation: ${user.id}`);
+                await this.prisma.user.delete({ where: { id: user.id } });
+                throw new InternalServerErrorException(`Mailcow account creation failed: ${mailError.message}`);
+            }
 
             // 8. Clean up used OTP sessions
             await this.prisma.otpSession.deleteMany({ where: { target: phone } });

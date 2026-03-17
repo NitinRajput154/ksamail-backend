@@ -26,4 +26,42 @@ export class MailboxService {
         if (!mailbox) throw new NotFoundException('Mailbox not found');
         return mailbox;
     }
+
+    async suspendMailbox(email: string) {
+        return this.mailcow.toggleMailboxActive(email, false);
+    }
+
+    async activateMailbox(email: string) {
+        return this.mailcow.toggleMailboxActive(email, true);
+    }
+
+    async deleteMailbox(email: string) {
+        // Delete from Mailcow
+        await this.mailcow.deleteMailbox(email);
+        
+        // Cleanup Prisma records if present
+        try {
+            await this.prisma.mailbox.delete({
+                where: { email }
+            });
+        } catch (e) {
+            // It's fine if it doesn't exist locally
+        }
+        
+        return { message: `Mailbox ${email} deleted successfully` };
+    }
+
+    async resetPassword(email: string, newPassword: string) {
+        return this.mailcow.resetPassword(email, newPassword);
+    }
+
+    async createMailbox(data: any) {
+        return this.mailcow.createMailbox(
+            data.localPart,
+            data.domain,
+            data.fullName || data.localPart,
+            data.password,
+            data.quotaMB
+        );
+    }
 }

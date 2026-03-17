@@ -47,4 +47,3 @@ model OtpSession {
 
   @@index([target, type])
 }
-

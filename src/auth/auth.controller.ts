@@ -82,4 +82,19 @@ export class AuthController {
         this.logger.log(`✅ Login cookie set for ${data.email}`);
         return result;
     }
+
+    // ─── Logout ──────────────────────────────────────────────
+    @Post('logout')
+    @HttpCode(HttpStatus.OK)
+    async logout(@Res({ passthrough: true }) response: Response) {
+        this.logger.log(`POST /auth/logout — Logging out user`);
+        
+        response.clearCookie('access_token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+        });
+
+        return { success: true, message: 'Logged out successfully' };
+    }
 }
