@@ -35,26 +35,27 @@ export class AdminService {
         const mailTraffic = await this.mailcow.getMailTrafficStats();
         
         // Fetch real recent activity from Mailcow API Logs
-        let activityLogs = [];
+        let activityLogs: any[] = [];
         try {
-            const logsResponse = await this.mailcow.getApiLogs(10); // Adding this method
-            activityLogs = logsResponse.map((log: any, index: number) => {
-                // Convert timestamp to human readable relative time simply, or just return formatted string
-                const date = new Date(log.time * 1000);
-                const timeString = date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                
-                return {
-                    id: index,
-                    type: "API",
-                    user: "admin", 
-                    ip: log.remote,
-                    time: timeString,
-                    action: `${log.method} ${log.uri}`,
-                    status: "Success"
-                };
-            });
+            const unifiedLogs = await this.mailcow.getSystemLogs(10);
+            activityLogs = unifiedLogs
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, 10)
+                .map((log, index) => {
+                    const date = new Date(log.timestamp);
+                    const timeString = date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    return {
+                        id: index,
+                        type: log.type,
+                        user: log.user,
+                        ip: log.ip,
+                        time: timeString,
+                        action: log.action,
+                        status: log.status
+                    };
+                });
         } catch (error) {
-            this.logger.error('Failed to get API logs', error);
+            this.logger.error('Failed to get activity logs', error);
         }
 
         return {
