@@ -75,7 +75,7 @@ export class AuthController {
         response.cookie('access_token', result.access_token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
             maxAge: 3600000,
         });
 
@@ -92,7 +92,7 @@ export class AuthController {
         response.clearCookie('access_token', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         });
 
         return { success: true, message: 'Logged out successfully' };
