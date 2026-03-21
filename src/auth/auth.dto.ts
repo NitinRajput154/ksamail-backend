@@ -83,3 +83,34 @@ export class VerifyEmailOtpDto {
     otp!: string;
 }
 
+// ─── Forgot Password DTOs ────────────────────────────────
+
+export class ForgotPasswordDto {
+    @IsEmail()
+    @IsNotEmpty()
+    email!: string; // The user's KSA Mail address (e.g. user@ksamail.com)
+
+    @IsOptional()
+    @IsString()
+    method?: 'email' | 'phone'; // Preferred recovery method (defaults to whatever is available)
+}
+
+export class ForgotPasswordVerifyOtpDto {
+    @IsEmail()
+    @IsNotEmpty()
+    email!: string; // The user's KSA Mail address
+
+    @IsString()
+    @IsNotEmpty()
+    otp!: string;
+}
+
+export class ResetPasswordDto {
+    @IsString()
+    @IsNotEmpty()
+    resetToken!: string;
+
+    @IsString()
+    @MinLength(8)
+    newPassword!: string;
+}

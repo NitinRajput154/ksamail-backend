@@ -47,3 +47,19 @@ model OtpSession {
 
   @@index([target, type])
 }
+
+model PasswordResetSession {
+  id             String    @id @default(uuid())
+  email          String    // The KSA Mail email of the user requesting the reset
+  target         String    // Recovery email or phone where OTP was sent
+  method         String    @default("email") // "email" or "phone"
+  verified       Boolean   @default(false)
+  resetToken     String?   @unique // Short-lived token issued after OTP verification
+  attempts       Int       @default(0)
+  expiresAt      DateTime
+  tokenExpiresAt DateTime? // When the reset token expires (after OTP verified)
+  createdAt      DateTime  @default(now())
+
+  @@index([email])
+  @@index([resetToken])
+}

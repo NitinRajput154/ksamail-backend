@@ -6,17 +6,30 @@ import {
     BadRequestException,
     HttpException,
     Logger,
+    NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailcowService } from '../mailcow/mailcow.service';
-import { RegisterDto, LoginDto, SendOtpDto, VerifyOtpDto, SendEmailOtpDto, VerifyEmailOtpDto } from './auth.dto';
+import {
+    RegisterDto,
+    LoginDto,
+    SendOtpDto,
+    VerifyOtpDto,
+    SendEmailOtpDto,
+    VerifyEmailOtpDto,
+    ForgotPasswordDto,
+    ForgotPasswordVerifyOtpDto,
+    ResetPasswordDto,
+} from './auth.dto';
+import * as crypto from 'crypto';
 
 const MAIL_DOMAIN = 'ksamail.com';
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 5;
+const RESET_TOKEN_EXPIRY_MINUTES = 15; // Reset token valid for 15 min after OTP verification
 
 @Injectable()
 export class AuthService {
@@ -52,6 +65,18 @@ export class AuthService {
                 'Accept': 'application/json',
             },
         };
+    }
+
+    // ─── Helper: Mask sensitive info for user display ─────────
+    private maskEmail(email: string): string {
+        const [local, domain] = email.split('@');
+        if (local.length <= 2) return `${local[0]}***@${domain}`;
+        return `${local[0]}${local[1]}${'*'.repeat(Math.min(local.length - 2, 6))}@${domain}`;
+    }
+
+    private maskPhone(phone: string): string {
+        if (phone.length <= 6) return '***' + phone.slice(-2);
+        return phone.slice(0, 4) + '*'.repeat(phone.length - 6) + phone.slice(-2);
     }
 
     // ─── Helper: Send OTP (generic) ──────────────────────────
@@ -382,6 +407,294 @@ export class AuthService {
                 email: user.email,
                 role: user.role,
             },
+        };
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── FORGOT PASSWORD FLOW ────────────────────────────────
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Step 1: Initiate password reset
+     * - User provides their KSA Mail email
+     * - System looks up recovery email/phone
+     * - Sends OTP to the recovery target via Authentica
+     * - Creates a PasswordResetSession
+     */
+    async forgotPassword(data: ForgotPasswordDto) {
+        const { email, method } = data;
+        this.logger.log(`🔑 forgotPassword called — email: ${email}, preferredMethod: ${method || 'auto'}`);
+
+        // 1. Find the user by their KSA Mail email
+        const user = await this.prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            this.logger.warn(`⚠️ Forgot password — user not found: ${email}`);
+            // Don't reveal whether the account exists (security best practice)
+            // Still return a success-like response to prevent enumeration
+            return {
+                success: true,
+                message: 'If an account with this email exists, a recovery OTP has been sent.',
+                method: null,
+                maskedTarget: null,
+            };
+        }
+
+        // 2. Determine recovery target (email or phone)
+        let recoveryTarget: string | null = null;
+        let recoveryMethod: 'email' | 'phone' = 'email';
+
+        if (method === 'phone' && user.phone) {
+            recoveryTarget = user.phone;
+            recoveryMethod = 'phone';
+        } else if (method === 'email' && user.recoveryEmail) {
+            recoveryTarget = user.recoveryEmail;
+            recoveryMethod = 'email';
+        } else if (user.recoveryEmail) {
+            // Default: prefer recovery email
+            recoveryTarget = user.recoveryEmail;
+            recoveryMethod = 'email';
+        } else if (user.phone) {
+            // Fallback: use phone
+            recoveryTarget = user.phone;
+            recoveryMethod = 'phone';
+        }
+
+        if (!recoveryTarget) {
+            this.logger.warn(`⚠️ No recovery method available for user: ${email}`);
+            throw new BadRequestException(
+                'No recovery email or phone number is registered with this account. Please contact support.',
+            );
+        }
+
+        this.logger.log(`📨 Recovery method: ${recoveryMethod}, target: ${recoveryTarget}`);
+
+        // 3. Clean up old expired sessions for this user
+        await this.prisma.passwordResetSession.deleteMany({
+            where: { email, expiresAt: { lt: new Date() } },
+        });
+
+        // 4. Check rate limiting — max 3 active sessions
+        const activeSessionCount = await this.prisma.passwordResetSession.count({
+            where: { email, expiresAt: { gt: new Date() } },
+        });
+        if (activeSessionCount >= 3) {
+            this.logger.warn(`⚠️ Too many reset requests for: ${email}`);
+            throw new BadRequestException(
+                'Too many password reset requests. Please wait a few minutes before trying again.',
+            );
+        }
+
+        // 5. Send OTP via Authentica
+        const { apiUrl, headers } = this.getAuthenticaConfig();
+
+        try {
+            const body: any = { method: recoveryMethod === 'phone' ? 'sms' : 'email' };
+            if (recoveryMethod === 'phone') {
+                body.phone = recoveryTarget;
+            } else {
+                body.email = recoveryTarget;
+            }
+
+            this.logger.log(`🌐 Sending password reset OTP: POST ${apiUrl}/send-otp`);
+            this.logger.debug(`Request body: ${JSON.stringify(body)}`);
+
+            await axios.post(`${apiUrl}/send-otp`, body, { headers });
+
+            this.logger.log(`✅ Password reset OTP sent via ${recoveryMethod} to ${recoveryTarget}`);
+        } catch (error: any) {
+            this.logger.error(`❌ Failed to send password reset OTP: ${error.message}`);
+
+            if (error.response?.status === 401) {
+                throw new InternalServerErrorException('OTP service authentication failed. Please contact support.');
+            }
+
+            const errorMsg = error.response?.data?.message || error.message || 'Failed to send OTP';
+            throw new InternalServerErrorException(`Failed to send recovery OTP: ${errorMsg}`);
+        }
+
+        // 6. Create PasswordResetSession
+        const session = await this.prisma.passwordResetSession.create({
+            data: {
+                email,
+                target: recoveryTarget,
+                method: recoveryMethod,
+                expiresAt: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000),
+            },
+        });
+
+        this.logger.log(`✅ PasswordResetSession created: id=${session.id}`);
+
+        // 7. Return masked info to the frontend
+        const maskedTarget = recoveryMethod === 'email'
+            ? this.maskEmail(recoveryTarget)
+            : this.maskPhone(recoveryTarget);
+
+        return {
+            success: true,
+            message: `A verification code has been sent to your ${recoveryMethod === 'email' ? 'recovery email' : 'registered phone'}.`,
+            method: recoveryMethod,
+            maskedTarget,
+        };
+    }
+
+    /**
+     * Step 2: Verify OTP for password reset
+     * - Verifies the OTP via Authentica
+     * - Generates a short-lived reset token
+     * - Returns the token to the frontend
+     */
+    async forgotPasswordVerifyOtp(data: ForgotPasswordVerifyOtpDto) {
+        const { email, otp } = data;
+        this.logger.log(`🔍 forgotPasswordVerifyOtp called — email: ${email}`);
+
+        // 1. Find the active PasswordResetSession
+        const session = await this.prisma.passwordResetSession.findFirst({
+            where: {
+                email,
+                verified: false,
+                expiresAt: { gt: new Date() },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        if (!session) {
+            this.logger.warn(`⚠️ No active password reset session for: ${email}`);
+            throw new BadRequestException('No active password reset request found. Please initiate a new one.');
+        }
+
+        if (session.attempts >= OTP_MAX_ATTEMPTS) {
+            this.logger.warn(`⚠️ Too many OTP attempts for password reset: ${email}`);
+            // Invalidate the session
+            await this.prisma.passwordResetSession.delete({ where: { id: session.id } });
+            throw new BadRequestException('Too many failed attempts. Please initiate a new password reset.');
+        }
+
+        // 2. Verify OTP via Authentica
+        const { apiUrl, headers } = this.getAuthenticaConfig();
+
+        try {
+            const body: any = { otp };
+            if (session.method === 'phone') {
+                body.phone = session.target;
+            } else {
+                body.email = session.target;
+            }
+
+            this.logger.log(`🌐 Verifying password reset OTP: POST ${apiUrl}/verify-otp`);
+
+            await axios.post(`${apiUrl}/verify-otp`, body, { headers });
+
+            this.logger.log(`✅ Password reset OTP verified for: ${email}`);
+        } catch (error: any) {
+            // Increment attempt count
+            await this.prisma.passwordResetSession.update({
+                where: { id: session.id },
+                data: { attempts: session.attempts + 1 },
+            });
+
+            this.logger.error(`❌ Password reset OTP verification failed: ${error.message}`);
+
+            const statusCode = error.response?.status;
+            if (statusCode === 422 || statusCode === 400) {
+                throw new BadRequestException('Invalid OTP. Please check the code and try again.');
+            }
+            throw new InternalServerErrorException(`OTP verification failed: ${error.message}`);
+        }
+
+        // 3. Generate a cryptographically secure reset token
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const tokenExpiresAt = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000);
+
+        // 4. Update session with the reset token
+        await this.prisma.passwordResetSession.update({
+            where: { id: session.id },
+            data: {
+                verified: true,
+                resetToken,
+                tokenExpiresAt,
+            },
+        });
+
+        this.logger.log(`✅ Reset token generated for: ${email} (expires: ${tokenExpiresAt.toISOString()})`);
+
+        return {
+            success: true,
+            message: 'OTP verified successfully. You can now reset your password.',
+            resetToken,
+            expiresIn: RESET_TOKEN_EXPIRY_MINUTES * 60, // seconds
+        };
+    }
+
+    /**
+     * Step 3: Reset the password
+     * - Validates the reset token
+     * - Updates password in local DB (bcrypt hash)
+     * - Updates password in Mailcow
+     * - Cleans up the session
+     */
+    async resetPassword(data: ResetPasswordDto) {
+        const { resetToken, newPassword } = data;
+        this.logger.log(`🔐 resetPassword called with token: ${resetToken.substring(0, 8)}...`);
+
+        // 1. Find the session by reset token
+        const session = await this.prisma.passwordResetSession.findUnique({
+            where: { resetToken },
+        });
+
+        if (!session) {
+            this.logger.warn(`⚠️ Invalid reset token`);
+            throw new BadRequestException('Invalid or expired reset token. Please initiate a new password reset.');
+        }
+
+        if (!session.verified) {
+            this.logger.warn(`⚠️ Reset token exists but OTP not verified: ${session.id}`);
+            throw new BadRequestException('OTP verification not completed. Please verify the OTP first.');
+        }
+
+        if (session.tokenExpiresAt && session.tokenExpiresAt < new Date()) {
+            this.logger.warn(`⚠️ Reset token expired: ${session.id}`);
+            // Clean up expired session
+            await this.prisma.passwordResetSession.delete({ where: { id: session.id } });
+            throw new BadRequestException('Reset token has expired. Please initiate a new password reset.');
+        }
+
+        // 2. Find the user
+        const user = await this.prisma.user.findUnique({ where: { email: session.email } });
+        if (!user) {
+            this.logger.error(`❌ User not found for email: ${session.email}`);
+            throw new NotFoundException('User account not found.');
+        }
+
+        // 3. Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        this.logger.debug(`New password hashed successfully`);
+
+        // 4. Update password in local database
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: { password: hashedPassword },
+        });
+        this.logger.log(`✅ Password updated in local DB for: ${session.email}`);
+
+        // 5. Update password in Mailcow
+        try {
+            await this.mailcow.resetPassword(session.email, newPassword);
+            this.logger.log(`✅ Password updated in Mailcow for: ${session.email}`);
+        } catch (mailError: any) {
+            this.logger.error(`❌ Mailcow password update failed: ${mailError.message}`);
+            // Password is already updated in the local DB.
+            // We log this error but don't roll back — the local password is the source of truth.
+            // An admin can manually sync the Mailcow password if needed.
+            this.logger.warn(`⚠️ Local DB password was updated but Mailcow sync failed. Admin may need to manually sync.`);
+        }
+
+        // 6. Clean up: delete all reset sessions for this email
+        await this.prisma.passwordResetSession.deleteMany({ where: { email: session.email } });
+        this.logger.log(`🧹 Password reset sessions cleaned up for: ${session.email}`);
+
+        return {
+            success: true,
+            message: 'Password reset successfully. You can now log in with your new password.',
         };
     }
 }

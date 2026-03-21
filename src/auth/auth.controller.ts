@@ -8,6 +8,9 @@ import {
     SendEmailOtpDto,
     VerifyEmailOtpDto,
     CheckUsernameDto,
+    ForgotPasswordDto,
+    ForgotPasswordVerifyOtpDto,
+    ResetPasswordDto,
 } from './auth.dto';
 import { Response } from 'express';
 
@@ -96,5 +99,45 @@ export class AuthController {
         });
 
         return { success: true, message: 'Logged out successfully' };
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ─── FORGOT PASSWORD FLOW ────────────────────────────────
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * Step 1: Initiate password reset
+     * POST /auth/forgot-password
+     * Body: { email: "user@ksamail.com", method?: "email" | "phone" }
+     */
+    @Post('forgot-password')
+    @HttpCode(HttpStatus.OK)
+    async forgotPassword(@Body() data: ForgotPasswordDto) {
+        this.logger.log(`POST /auth/forgot-password — email: ${data.email}`);
+        return this.authService.forgotPassword(data);
+    }
+
+    /**
+     * Step 2: Verify OTP for password reset
+     * POST /auth/forgot-password/verify-otp
+     * Body: { email: "user@ksamail.com", otp: "123456" }
+     */
+    @Post('forgot-password/verify-otp')
+    @HttpCode(HttpStatus.OK)
+    async forgotPasswordVerifyOtp(@Body() data: ForgotPasswordVerifyOtpDto) {
+        this.logger.log(`POST /auth/forgot-password/verify-otp — email: ${data.email}`);
+        return this.authService.forgotPasswordVerifyOtp(data);
+    }
+
+    /**
+     * Step 3: Reset the password
+     * POST /auth/forgot-password/reset
+     * Body: { resetToken: "abc123...", newPassword: "newSecurePassword" }
+     */
+    @Post('forgot-password/reset')
+    @HttpCode(HttpStatus.OK)
+    async resetPassword(@Body() data: ResetPasswordDto) {
+        this.logger.log(`POST /auth/forgot-password/reset — token: ${data.resetToken.substring(0, 8)}...`);
+        return this.authService.resetPassword(data);
     }
 }
