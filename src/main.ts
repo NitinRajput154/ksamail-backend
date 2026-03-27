@@ -7,6 +7,9 @@ async function bootstrap() {
     const logger = new Logger('Bootstrap');
     const app = await NestFactory.create(AppModule);
 
+    // Set global prefix for all routes
+    app.setGlobalPrefix('api');
+
     // 1. Global Validation Pipe
     app.useGlobalPipes(new ValidationPipe({
         whitelist: true,
