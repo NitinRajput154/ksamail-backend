@@ -63,3 +63,17 @@ model PasswordResetSession {
   @@index([email])
   @@index([resetToken])
 }
+
+model Banner {
+  id          String   @id @default(uuid())
+  title       String
+  subtitle    String?
+  buttonText  String   @default("Learn More")
+  buttonLink  String   @default("/signup")
+  image       String   // Filename or URL
+  bgColor     String   @default("linear-gradient(135deg, rgba(10, 88, 50, 0.82) 0%, rgba(13, 110, 63, 0.75) 100%)")
+  isActive    Boolean  @default(true)
+  order       Int      @default(0) // For sorting
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

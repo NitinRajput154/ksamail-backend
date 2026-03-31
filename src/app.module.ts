@@ -5,6 +5,7 @@ import { MailboxModule } from './mailbox/mailbox.module';
 import { MailcowModule } from './mailcow/mailcow.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
+import { BannerModule } from './banner/banner.module';
 import { AdminController } from './admin/admin/admin.controller';
 import { AdminService } from './admin/admin/admin.service';
 
@@ -18,6 +19,7 @@ import { AdminService } from './admin/admin/admin.service';
         MailboxModule,
         MailcowModule,
         UsersModule,
+        BannerModule,
     ],
     controllers: [AdminController],
     providers: [AdminService],
