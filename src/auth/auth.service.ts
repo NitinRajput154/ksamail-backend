@@ -23,6 +23,7 @@ import {
     ForgotPasswordDto,
     ForgotPasswordVerifyOtpDto,
     ResetPasswordDto,
+    ChangePasswordDto,
 } from './auth.dto';
 import * as crypto from 'crypto';
 
@@ -695,6 +696,55 @@ export class AuthService {
         return {
             success: true,
             message: 'Password reset successfully. You can now log in with your new password.',
+        };
+    }
+
+    /**
+     * Authenticated Change Password
+     * Updates password in local DB and Mailcow
+     */
+    async changePassword(data: ChangePasswordDto) {
+        const { email, currentPassword, newPassword } = data;
+        this.logger.log(`🔐 changePassword called for: ${email}`);
+
+        // 1. Find the user
+        const user = await this.prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            this.logger.warn(`⚠️ Change password — user not found: ${email}`);
+            throw new NotFoundException('User not found');
+        }
+
+        // 2. Verify current password
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            this.logger.warn(`⚠️ Change password — wrong current password for: ${email}`);
+            throw new UnauthorizedException('Invalid current password');
+        }
+
+        // 3. Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        this.logger.debug(`New password hashed successfully`);
+
+        // 4. Update password in local database
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: { password: hashedPassword },
+        });
+        this.logger.log(`✅ Password updated in local DB for: ${email}`);
+
+        // 5. Update password in Mailcow
+        try {
+            await this.mailcow.resetPassword(email, newPassword);
+            this.logger.log(`✅ Password updated in Mailcow for: ${email}`);
+        } catch (mailError: any) {
+            this.logger.error(`❌ Mailcow password update failed: ${mailError.message}`);
+            // We log this error but don't roll back — the local password is the source of truth.
+            this.logger.warn(`⚠️ Local DB password was updated but Mailcow sync failed.`);
+        }
+
+        return {
+            success: true,
+            message: 'Password changed successfully.',
         };
     }
 }

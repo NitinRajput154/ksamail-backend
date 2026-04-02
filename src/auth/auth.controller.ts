@@ -11,6 +11,7 @@ import {
     ForgotPasswordDto,
     ForgotPasswordVerifyOtpDto,
     ResetPasswordDto,
+    ChangePasswordDto,
 } from './auth.dto';
 import { Response } from 'express';
 
@@ -139,5 +140,16 @@ export class AuthController {
     async resetPassword(@Body() data: ResetPasswordDto) {
         this.logger.log(`POST /auth/forgot-password/reset — token: ${data.resetToken.substring(0, 8)}...`);
         return this.authService.resetPassword(data);
+    }
+
+    /**
+     * Change Password (Authenticated by current password)
+     * POST /auth/change-password
+     */
+    @Post('change-password')
+    @HttpCode(HttpStatus.OK)
+    async changePassword(@Body() data: ChangePasswordDto) {
+        this.logger.log(`POST /auth/change-password — email: ${data.email}`);
+        return this.authService.changePassword(data);
     }
 }
