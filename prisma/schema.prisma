@@ -77,3 +77,28 @@ model Banner {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model Sponsor {
+  id          String   @id @default(uuid())
+  title       String
+  desc        String
+  logo        String?
+  image       String?   // For SnappyMail UI compatibility
+  features    Json     // Store as JSON array of strings
+  link        String
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SupportTicket {
+  id          String   @id @default(uuid())
+  email       String?
+  category    String
+  subject     String
+  message     String
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

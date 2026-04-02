@@ -8,6 +8,8 @@ import { UsersModule } from './users/users.module';
 import { BannerModule } from './banner/banner.module';
 import { AdminController } from './admin/admin/admin.controller';
 import { AdminService } from './admin/admin/admin.service';
+import { SponsorModule } from './sponsor/sponsor.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
     imports: [
@@ -20,6 +22,8 @@ import { AdminService } from './admin/admin/admin.service';
         MailcowModule,
         UsersModule,
         BannerModule,
+        SponsorModule,
+        SupportModule,
     ],
     controllers: [AdminController],
     providers: [AdminService],

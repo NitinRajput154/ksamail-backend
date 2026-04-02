@@ -30,6 +30,9 @@ async function bootstrap() {
     // 3. CORS for frontend integration
     const allowedOrigins = [
         'http://localhost:3000',
+        'http://localhost:8889',
+        'http://127.0.0.1:8889',
+        'http://192.168.1.6:8889',
         'https://ksa-mail.vercel.app',
         ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map(u => u.trim()) : []),
     ];
