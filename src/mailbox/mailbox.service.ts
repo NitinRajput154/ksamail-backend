@@ -55,6 +55,23 @@ export class MailboxService {
         return this.mailcow.resetPassword(email, newPassword);
     }
 
+    async updateQuota(email: string, quotaMB: number) {
+        // Update in Mailcow
+        await this.mailcow.updateMailboxQuota(email, quotaMB);
+        
+        // Update in Prisma if the record exists
+        try {
+            await this.prisma.mailbox.update({
+                where: { email },
+                data: { quota: quotaMB }
+            });
+        } catch (e) {
+            // Record might not exist in Prisma, which is fine
+        }
+        
+        return { message: `Quota updated for ${email} to ${quotaMB}MB` };
+    }
+
     async createMailbox(data: any) {
         return this.mailcow.createMailbox(
             data.localPart,

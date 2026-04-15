@@ -45,6 +45,12 @@ export class MailboxController {
         return this.mailboxService.deleteMailbox(email);
     }
 
+    @Post(':email/update-quota')
+    @Roles(Role.ADMIN)
+    async updateQuota(@Param('email') email: string, @Body() body: any) {
+        return this.mailboxService.updateQuota(email, body.quota);
+    }
+
     @Post('add')
     @Roles(Role.ADMIN)
     async createMailbox(@Body() body: any) {

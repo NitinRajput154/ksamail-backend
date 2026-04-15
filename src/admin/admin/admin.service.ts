@@ -42,7 +42,9 @@ export class AdminService {
                 .sort((a, b) => b.timestamp - a.timestamp)
                 .slice(0, 10)
                 .map((log, index) => {
-                    const date = new Date(log.timestamp);
+                    const ts = log.timestamp;
+                    const ms = String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts);
+                    const date = new Date(ms);
                     const timeString = date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                     return {
                         id: index,

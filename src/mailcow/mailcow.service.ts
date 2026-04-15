@@ -122,6 +122,28 @@ export class MailcowService {
         }
     }
 
+    async updateMailboxQuota(email: string, quotaMB: number) {
+        this.logger.log(`📏 updateMailboxQuota called — ${email} -> ${quotaMB}MB`);
+        try {
+            const payload = {
+                items: [email],
+                attr: {
+                    quota: quotaMB // Assuming the API takes MB as seen in createMailbox
+                }
+            };
+            const response = await this.axios.post('/api/v1/edit/mailbox', payload);
+            if (response.data[0]?.type === 'error' || response.data[0]?.type === 'danger') {
+                const msgObj = response.data[0]?.msg;
+                throw new Error(String(Array.isArray(msgObj) ? msgObj.join(', ') : (msgObj || 'Mailcow API error')));
+            }
+            this.logger.log(`✅ Mailbox quota updated: ${email} to ${quotaMB}MB`);
+            return response.data;
+        } catch (error: any) {
+            this.logger.error(`❌ Mailcow Quota Update Failed: ${error.message}`);
+            throw new InternalServerErrorException(`Mailcow Quota Update Failed: ${error.message}`);
+        }
+    }
+
     async getDomainQuotas() {
         this.logger.log(`📊 getDomainQuotas called for all domains`);
         try {
