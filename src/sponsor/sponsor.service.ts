@@ -10,13 +10,10 @@ export class SponsorService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
-  ) {}
+  ) { }
 
   private getBaseUrl() {
-    const port = this.configService.get('PORT') || 4000;
-    // If in production, use the real domain, otherwise localhost
-    const isProd = process.env.NODE_ENV === 'production';
-    return isProd ? 'https://ksamail.com' : `http://localhost:${port}`;
+    return 'https://ksamail.com';
   }
 
   private mapSponsorLogo(sponsor: any) {
@@ -25,9 +22,9 @@ export class SponsorService {
 
     // Handle 'logo' field
     if (updatedSponsor.logo && updatedSponsor.logo.startsWith('/uploads/')) {
-        updatedSponsor.logo = `${baseUrl}${updatedSponsor.logo}`;
+      updatedSponsor.logo = `${baseUrl}${updatedSponsor.logo}`;
     }
-    
+
     // Add 'image' field for SnappyMail UI compatibility
     updatedSponsor.image = updatedSponsor.logo;
 
@@ -77,7 +74,7 @@ export class SponsorService {
       isActive: data.isActive,
       order: data.order,
     };
-    
+
     return this.prisma.sponsor.update({
       where: { id },
       data: updateData,

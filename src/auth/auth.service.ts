@@ -281,7 +281,7 @@ export class AuthService {
 
     // ─── Register ────────────────────────────────────────────
     async register(data: RegisterDto) {
-        const { name, username, phone, recoveryEmail, password, role } = data;
+        const { name, username, phone, password, role } = data;
         const email = `${username}@${MAIL_DOMAIN}`;
 
         this.logger.log(`📝 Register called — name: ${name}, username: ${username}, email: ${email}, phone: ${phone}`);
@@ -305,15 +305,8 @@ export class AuthService {
         }
         this.logger.log(`✅ Phone verification confirmed for ${phone}`);
 
-        // 3. Check if recovery email was verified (optional but tracked)
-        let isEmailVerified = false;
-        if (recoveryEmail) {
-            const emailSession = await this.prisma.otpSession.findFirst({
-                where: { target: recoveryEmail, type: 'email', verified: true, expiresAt: { gt: new Date() } },
-            });
-            isEmailVerified = !!emailSession;
-            this.logger.log(`📧 Recovery email ${recoveryEmail} verified: ${isEmailVerified}`);
-        }
+        // 3. Recovery email is removed from signup
+        const isEmailVerified = false;
 
         // 4. Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -328,7 +321,7 @@ export class AuthService {
                     username,
                     email,
                     phone,
-                    recoveryEmail: recoveryEmail || null,
+                    recoveryEmail: null,
                     password: hashedPassword,
                     phoneVerified: true,
                     emailVerified: isEmailVerified,
@@ -362,9 +355,6 @@ export class AuthService {
 
             // 8. Clean up used OTP sessions
             await this.prisma.otpSession.deleteMany({ where: { target: phone } });
-            if (recoveryEmail) {
-                await this.prisma.otpSession.deleteMany({ where: { target: recoveryEmail } });
-            }
             this.logger.log(`🧹 OTP sessions cleaned up`);
 
             const { password: _, ...result } = user;
@@ -440,30 +430,14 @@ export class AuthService {
             };
         }
 
-        // 2. Determine recovery target (email or phone)
-        let recoveryTarget: string | null = null;
-        let recoveryMethod: 'email' | 'phone' = 'email';
-
-        if (method === 'phone' && user.phone) {
-            recoveryTarget = user.phone;
-            recoveryMethod = 'phone';
-        } else if (method === 'email' && user.recoveryEmail) {
-            recoveryTarget = user.recoveryEmail;
-            recoveryMethod = 'email';
-        } else if (user.recoveryEmail) {
-            // Default: prefer recovery email
-            recoveryTarget = user.recoveryEmail;
-            recoveryMethod = 'email';
-        } else if (user.phone) {
-            // Fallback: use phone
-            recoveryTarget = user.phone;
-            recoveryMethod = 'phone';
-        }
+        // 2. Recovery target is now strictly the verified phone number
+        let recoveryTarget: string | null = user.phone;
+        let recoveryMethod: 'phone' = 'phone';
 
         if (!recoveryTarget) {
             this.logger.warn(`⚠️ No recovery method available for user: ${email}`);
             throw new BadRequestException(
-                'No recovery email or phone number is registered with this account. Please contact support.',
+                'No verified phone number is registered with this account. Please contact support.',
             );
         }
 
@@ -526,13 +500,11 @@ export class AuthService {
         this.logger.log(`✅ PasswordResetSession created: id=${session.id}`);
 
         // 7. Return masked info to the frontend
-        const maskedTarget = recoveryMethod === 'email'
-            ? this.maskEmail(recoveryTarget)
-            : this.maskPhone(recoveryTarget);
+        const maskedTarget = this.maskPhone(recoveryTarget);
 
         return {
             success: true,
-            message: `A verification code has been sent to your ${recoveryMethod === 'email' ? 'recovery email' : 'registered phone'}.`,
+            message: `A verification code has been sent to your registered phone.`,
             method: recoveryMethod,
             maskedTarget,
         };

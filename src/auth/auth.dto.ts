@@ -20,9 +20,6 @@ export class RegisterDto {
     @Matches(/^\+\d{7,15}$/, { message: 'Phone must be a valid international number starting with + (e.g. +9665XXXXXXXX or +91XXXXXXXXXX)' })
     phone!: string;
 
-    @IsOptional()
-    @IsEmail()
-    recoveryEmail?: string;
 
     @IsString()
     @MinLength(8)
